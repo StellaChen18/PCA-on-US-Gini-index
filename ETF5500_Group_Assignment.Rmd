@@ -1,0 +1,362 @@
+---
+title: |
+  ETF3500/5500 High Dimensional Data Analysis 
+  
+  Group Assignment
+date:  "`r format(Sys.time(), '%d %B, %Y')`"
+author:
+  - Xianghe XU 
+  - Yunzhi Chen
+  - Xintong You
+  - Minh Cao
+team: Group 37
+subtitle: |
+  Department of Econometrics and Business Statistics
+
+  Monash University
+  
+  | - 
+  
+  __An investigation report on the impacts of the Great Depression, World War II and the Global Financial Crisis on income inequality within states of United States of America.__
+  
+  | -
+
+header-includes: 
+  - \renewcommand{\and}{\\ \\}
+  - \AddToHook{env/abstract/before}{\vspace*{2cm}}
+  - \makeatletter\AddToHook{cmd/@date/before}{\vspace*{2cm}}\makeatother
+output:
+  bookdown::pdf_document2:
+    toc: FALSE
+    number_sections: FALSE
+  html_document: default
+
+
+---
+\newpage
+
+[This assignment is for ETF3500/5500 Group Assignment by Team `r rmarkdown::metadata$team` comprising of `r knitr::combine_words(rmarkdown::metadata$author)`.]{style="color:#006DAE;"}
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(
+  echo = FALSE,
+  eval = TRUE,
+  message = FALSE,  
+  warning = FALSE,  
+  error = FALSE,    
+  out.width = "70%",
+  fig.align = "center",
+  fig.width = 8, 
+  fig.height = 7,
+  fig.retina = 3,
+  fig.pos = "H", 
+  out.extra = "")
+```
+
+```{r}
+# Load library and data sets
+library(tidyverse)
+library(visdat)
+library(naniar)
+library(kableExtra)
+library(gridExtra)
+data_gd <- read_csv("Inequality_GD.csv")
+data_gr <- read_csv("Inequality_GR.csv")
+```
+
+### Introduction and Motivation
+
+In the realm of economic and social analysis, income inequality is always one of indicators that reveals the true economic and social status of an area or a country. The comprehension of the dynamics behind the income distribution over a period of time has long been a topic of significant interest for policymakers, economists, and public. Among the various factors that have influences on income inequality, historical events is one of the main factors that plays a profound and important role on income inequality. 
+
+This report embarks on a thorough investigation of the effects of three pivotal historical events, the Great Depression, World War II, and the Global Financial Crisis, on income inequality within the states of United States. Each of these historical events, characterized by unique and unexpected economic and societal shifts, has left indelible imprints on the nation's economic and financial landscape. In this report, the aim is to scrutinize how does the income distribution vary with the historical events mentioned above, and unravel the complex interplay between historical circumstances and contemporary income disparities.
+
+
+### Data Description
+
+__Source and structure of the data:__
+
+The data set used in this report was sourced from [*__U.S. State-Level Income Inequality Data - Mark W. Frank.__*](https://www.shsu.edu/eco_mwf/inequality.html), which offers a comprehensive panel of United States' annual state level income inequality measures and was constructed from individual tax filling data available from the Internal Revenue Service. 
+
+This report uses Gini index data to conduct an analysis on income inequality within the states of United States. The [__Gini index__](https://en.wikipedia.org/wiki/Gini_coefficient), also known as Gini coefficient, is a statistical measure of income or wealth inequality within a country or a social group. It quantifies the extent to which the income or wealth is distributed among areas of a country. The Gini index is a number between 0 and 1; a Gini index of 0 represents perfect income equality within a state where everyone has the same income or wealth, whereas a Gini index of 1 represents perfect income inequality within a state where one individual or household has all the income or wealth and everyone else has none. 
+
+The two data files used in this report for the analysis of income inequality are "Inequality_GD.csv" and "Inequality_GR.csv". These data files contain annual Gini index data for the states of the United States, a federal district(Washington), and the United States as a whole. The files "Inequality_GD.csv" and "Inequality_GR.csv" have dimensions of `r nrow(data_gd)` observations and `r ncol(data_gd)` columns, and `r nrow(data_gr)` observations and `r ncol(data_gr)` columns, respectively. The first data file, "Inequality_GD.csv", covers the period between 1929 and 1945 which corresponds to the occurrence of the Great Depression and World War II. The second data file, "Inequality_GR.csv", covers the period between 2007 and 2015, which corresponds to the Global Financial Crisis and the economic downturn that followed. Both data sets share a similar structure; the first column of the data set represents the states'rank according to state names in an alphabetical order, the second column contains the names of the states, and the remaining columns hold the annual Gini index for each state over the years. The first data set has `r nrow(data_gd)` observations compared with `r nrow(data_gr)` observations in second data set. This difference is due to Alaska and Hawaii joining in the year 1959. The inconsistency in the number of observations between the two data sets is believed to have no impact on the analysis of income inequality on the states of United state. 
+
+
+### Preliminary Analysis 
+
+```{r check-data1}
+# Check data sets
+data_gd %>% 
+  head() %>% 
+  kable(caption = "First six rows of Inequality-GD data set") 
+```
+
+```{r check-data2}
+# Check data sets
+data_gr %>% 
+  head() %>% 
+  kable(caption = "First six rows of Inequality-GR data set") 
+```
+
+The Table \@ref(tab:check-data1) and Table \@ref(tab:check-data2) display the first six rows of the two data set. At a glance of the data in the table \@ref(tab:check-data1) and Table \@ref(tab:check-data2), it provides insight on how the data should be prepared for principal component analysis:
+
+- The first columns of the data sets can be removed since they consist of index numbers, which can be considered irrelevant and redundant for the analysis.
+- The variable 'State' can be converted to row names using `column_to_rownames()` function.
+- There are missing values in the data set, operations may be needed for those missing values as PCA is not robust to missing data.
+
+The tables \@ref(tab:check-data1) and \@ref(tab:check-data2) offer a glance of the Gini index data sets. The next step will involve utilizing summary statistics and visualization techniques for preliminary data analysis. The objective of this step is to prepare the data sets for principal component analysis.
+
+```{r}
+# Remove index column
+new_gd <- data_gd %>% 
+  select(-"...1")
+
+new_gr <- data_gr %>% 
+  select(-"...1")
+
+# Pivot data sets
+pivot_gd <- new_gd %>% 
+  pivot_longer(cols = -c(State), names_to = "Year", values_to = "Gini_index") %>% 
+  mutate(Year = as.factor(Year))
+
+pivot_gr <- new_gr %>% 
+  pivot_longer(cols = -c(State), names_to = "Year", values_to = "Gini_index") %>% 
+  mutate(Year = as.factor(Year))
+
+```
+
+
+```{r summary1}
+# Use summary statistics to check Gini index data in Inequality_GD and Inequality_GR
+t1 <- pivot_gd %>% 
+  select(Gini_index) %>% 
+  summary() 
+
+t2 <- pivot_gr %>% 
+  select(Gini_index) %>% 
+  summary() 
+
+kable(list(t1, t2), caption = "Summary statistics for the Gini index data sets.")
+```
+
+The Table \@ref(tab:summary1) shows the a statistical summary of the Gini index data sets; the left side is the summary for the 'Inequality_GD' data set, and the right side is for the 'Inequality_GR' data set."
+
+```{r miss-data, fig.cap="Visulazations of missing values in two data sets", out.width = "60%"}
+# Plot of missing value
+miss1 <- gg_miss_var(data_gd) 
+miss2 <- gg_miss_var(data_gr)
+
+grid.arrange(miss1, miss2, nrow = 1)
+```
+
+The Figure \@ref(fig:miss-data) displays plots that provide at-a-glance representations of missing data within the data sets. The second plot (on the right) reveals the presence of eight missing values in the year 2010 in the second data set (`Inequality_GR`). 
+
+```{r outlier-data, fig.cap="Visualisations of distributions of Gini index for each year", out.width = "70%"}
+# Use boxplots to show distributions of data
+pivot_p1 <- pivot_gd %>% 
+  ggplot(aes(x = Year,
+             y = Gini_index,
+             group = Year)) +
+  geom_boxplot(na.rm = TRUE) +
+  theme_classic() +
+  theme(legend.position = "none", axis.text.x = element_text(angle = 45, vjust = 0.5, hjust= 0.3))
+
+pivot_p2 <- pivot_gr %>% 
+  ggplot(aes(x = Year,
+             y = Gini_index,
+             group = Year)) +
+  geom_boxplot(na.rm = TRUE) +
+  theme_classic() +
+  theme(legend.position = "none", axis.text.x = element_text(angle = 45, vjust = 0.5, hjust= 0.3))
+
+grid.arrange(pivot_p1, pivot_p2, nrow = 1)
+```
+
+In Figure \@ref(fig:outlier-data), the figure uses box plots to depict the Gini index data distributions for each year within each of the data sets. The plot on the right appears normal; all the distributions fall within the range of 0 and 1 for all the years. However, the plot on the left looks distinctly different compared to the right. In the left plot, all the distributions are compressed into a single line. The main reason for this is that the Gini index data in the left plot contains an extremely large value of 1000. 
+
+After conducting data exploration analysis on the data using summary statistics and visualization techniques, the tables and figures presented above demonstrate that there are two problems within the data sets:
+
+- The data set `Inequality_GD` contains an extremely large value of 1000. 
+
+- The data set `Inequality_GR` has eight missing values in the year 2010. 
+
+From the statistical summary table \@ref(tab:summary1) and Figure \@ref(fig:outlier-data), it is evident that `Inequality_GD` data set has a maximum value of 1000. This is impossible in Gini index data because the Gini index cannot exceed 1. Also, the Table \@ref(tab:summary1) and the Figure \@ref(fig:miss-data) has demonstrated that there are eight missing values in `Inequality_GR` data set. The extremely large value will introduce bias into the accuracy of principal component analysis, and traditional principal component analysis does not accept any missing data points. Therefore, we need to perform some operations to eliminate the presence of both the extremely large value and the missing values before conducting principal component analysis. Since there is only one extremely large value and a few missing values, the mean imputation method can be applied to both the missing values and the the outler value in order to perform the principal analysis and reduce the bias. (Mean imputation is a method in which the mean of the observed values for each variable is computed, and the missing values or outlier for that variable are replaced with this mean.)
+
+```{r findoutlier}
+# Get information of state & year of the extremely large value 
+pivot_gd %>% 
+  filter(Gini_index >1) %>% 
+  kable(caption = "An extremely large Gini index") %>%
+  kableExtra::kable_styling(latex_options = "hold_position") 
+```
+
+Table \@ref(tab:findoutlier) displays the state and year information of the extremely large Gini index data point. 
+
+```{r}
+# Remove the extremely large value and missing values 
+new_gd[new_gd == 1000] <- NA
+
+gd <- new_gd %>% 
+  mutate(`1934` = impute_mean(`1934`)) 
+gr <- new_gr %>% 
+  mutate(`2010` = impute_mean(`2010`)) 
+```
+
+```{r check-new-data}
+table1 <- gd %>% 
+  pivot_longer(cols = -c(State), names_to = "Year", values_to = "Gini_index") %>% 
+  mutate(Year = as.factor(Year)) %>% 
+  select(Gini_index) %>% 
+  summary() 
+
+table2 <- gr %>% 
+  pivot_longer(cols = -c(State), names_to = "Year", values_to = "Gini_index") %>% 
+  mutate(Year = as.factor(Year)) %>% 
+  select(Gini_index) %>% 
+  summary() 
+
+kable(list(table1, table2), caption = "First six rows of Inequality-GR data set") %>%
+  kableExtra::kable_styling(latex_options = "hold_position")
+```
+
+```{r box-plot-clean,fig.cap="Visualisations of distributions of Gini index for each year"}
+clean_gd <- gd %>% 
+  pivot_longer(cols = -c(State), names_to = "Year", values_to = "Gini_index") %>% 
+  mutate(Year = as.factor(Year)) %>% 
+  ggplot(aes(x = Year,
+             y = Gini_index,
+             group = Year)) +
+  geom_boxplot(na.rm = TRUE) +
+  theme_classic() +
+  theme(legend.position = "none", axis.text.x = element_text(angle = 45, vjust = 0.5, hjust= 0.3)) +
+  ylim(0.3, 0.8)
+
+clean_gr <- gr %>% 
+  pivot_longer(cols = -c(State), names_to = "Year", values_to = "Gini_index") %>% 
+  mutate(Year = as.factor(Year)) %>% 
+  ggplot(aes(x = Year,
+             y = Gini_index,
+             group = Year)) +
+  geom_boxplot(na.rm = TRUE) +
+  theme_classic() +
+  theme(legend.position = "none", axis.text.x = element_text(angle = 45, vjust = 0.5, hjust= 0.3)) + 
+  ylim(0.3, 0.8)
+
+grid.arrange(clean_gd, clean_gr, nrow = 1)
+```
+
+
+The above Table \@ref(tab:check-new-data) displays the summary statistics of the two data sets after cleaning the data sets. From the table \@ref(tab:check-new-data), it is clear that all summary values are within the range of 0 and 1, with no extremely large values or missing values present. 
+
+Furthermore, the use of boxplot in the Figure \@ref(fig:box-plot-clean) displays the Gini index data distributions for each year within each of the data sets. After cleaning the data sets, both boxplots appear normal, with all data points falling within the range of 0 and 1.
+
+The left boxplot illustrates the Gini index data distributions for each year over the period of the Great Depression and World War II. The spread of the distributions converges over the years, indicating that the difference in income inequality between the states became smaller over time. Moreover, the overall trend reveals that income inequality decreased in the first few years of the Great Depression, increased again, and then decreased once more in 1940, corresponding to the start of World War II before increasing again.
+
+The boxplot on the right illustrates the Gini index data distributions for each year over the period of the Global Financial Crisis and the economic downturn that followed. Unlike the boxplot on the left, the right boxplot has a relatively steady spread of the Gini index distribution over the years. A small drop in the Gini index is observed in the year 2010, followed by an increase in the following years.
+
+Overall, the distributions of the Gini index on the right plot are generally higher than those on the left plot. This indicates that higher income inequality is present across the states of the United States in recent years compared to the period from 1929 to 1945.
+
+Now the cleaned Gini index data can be taken to principal component analysis to investigate the impact of historical events on income inequality.
+
+```{r}
+# Convert State column to row names
+gd <- gd %>% 
+  column_to_rownames("State")
+
+gr <- gr %>% 
+  column_to_rownames("State")
+```
+
+
+### Principal Component Analysis
+
+In this report, Principal Component Analysis (PCA) will be conducted on two data sets. PCA is a statistical method used to simplify and reduce the dimensionality of a data set while retaining as much essential information as possible. It achieves this by transforming the original variables into a new set of uncorrelated variables known as 'principal components.' These principal components are linear combinations of the original variables and are ordered so that the first component explains the most variance in the data, the second component explains the second most, and so on. The goal is to use as few principal components as possible to capture the majority of the variance. To determine the optimal number of principal components, we will employ methods such as the scree plot and Kaiser's Rule.
+
+```{r}
+# Pipe data into prcomp()
+pca_gd <- gd %>% 
+  prcomp(scale. = TRUE) 
+
+pca_gr <- gr %>% 
+  prcomp(scale. = TRUE) 
+```
+
+```{r}
+# To inspect std, (cumulative) proportion variaance
+summary(pca_gd)
+
+summary(pca_gr)
+```
+
+The above output displays standard deviation, proportion of variance and cumulative proportion of variance for each principal component for the `Inequality-GD` and `Inequality-GR` data sets, respectively. The above output conveys that over 90% of total variance is explained by the first two principal components together for each of the data sets. 
+
+```{r scree1, fig.cap = "Scree plots for `Inequality-GD` data set", out.width= "40%"}
+scree1 <- screeplot(pca_gd, type = "l", main = ggtitle("Inequality-GD"))
+```
+
+
+```{r scree2, fig.cap = "Scree plots for `Inequality-GR` data set", out.width="40%"}
+scree2 <- screeplot(pca_gr, type = "l", main = ggtitle("Inequality-GR"))
+```
+
+The Figure \@ref(fig:scree1) and Figure \@ref(fig:scree2) represent the scree plots for the data sets `Inequality_GD` and `Inequality_GR`, respectively. According to the elbow method, the point at which the scree plot flattens out indicates the principal components we should choose. In this case, both scree plots indicate that the first three principal components will be selected. However, Kaiser's Rule suggests selecting only the first two principal components, as they both have variances greater than one for both data sets. Therefore, the first two principal components will be chosen for both data sets.
+
+A biplot can be constructed using the first two principal components, which allows for the comparison of observations to variables. Since 91% of the total variance is explained by the first two principal components together for 'Inequality_GD,' and 96% of the total variance is explained by the first two principal components together for 'Inequality_GR,' both of the first two principal components explain the majority of the variation in the two data sets. Therefore, the biplots can be considered accurate visualizations for comparing observations and variables. 
+
+A biplot essentially involves plotting the weight vectors on the same scatterplot as the data. There are several things that can be done with a biplot, including observing how the observations relate to one another, how the variables relate to one another, and how the observations relate to the variables. A correlation biplot can be used to compare the variables, a distance biplot can be used to compare the observations, and either a correlation biplot or a distance biplot can be used to explore the relationship between observations and variables. 
+
+```{r corr-biplot-gd, fig.cap = "Correlation biplot for the Great Depression and World War II.", out.width= "70%"}
+biplot(pca_gd, scale = 0, cex = 0.3)
+```
+
+```{r dist-biplot-gd, fig.cap = "Distance biplot for the Great Depression and World War II.", out.width= "70%"}
+biplot(pca_gd, cex = 0.8)
+```
+
+Figure \@ref(fig:corr-biplot-gd) represents the correlation biplot, while Figure \@ref(fig:dist-biplot-gd) represents the distance biplot for the `Inequality_GD` Gini index data set, which covers the period between 1929 and 1945. This period corresponds to the Great Depression and World War II.
+
+From the correlation biplot in Figure \@ref(fig:corr-biplot-gd), all the yearly variables are more or less negatively associated with PC1, and the yearly variable shifts from a negative association to no association and then to a positive association with PC2. The yearly variable red line shifts clockwise at a small and almost steady pace from 1929 to 1945. We are interested in how the income inequality of the states changes over time, so we first look at consecutive years. The angles between the red lines provide insights into the correlations between two yearly variables. Almost any two consecutive years within the period from year 1929 to 1945 have a small angle, indicating a strong association between the two consecutive years and the Gini index, meaning that the income inequality in the states is quite similar for two consecutive years. The only exception is the angle between 1939 and 1940, where a quite large angle can be observed. This indicates that the income inequality in 1939 is quite different from the income inequality in 1940, which also corresponds to the start of World War II.
+
+Figure \@ref(fig:corr-biplot-gd) is the distance biplot, where the distance between observations implies similarity between observations. In this distance plot, most states are close to each other. The closer they are, the more similar those states are in terms of income inequality within their borders. However, a few states are slightly farther away from the majority, including New York, Florida, Mississippi, and Idaho. This suggests that these states differ significantly in terms of income inequality compared to the majority of states. Delaware stands out as the only state far apart from the others, indicating that Delaware has distinct income inequality compared to the rest of the states in the United States.
+
+Either the correlation biplot in Figure Figure \@ref(fig:corr-biplot-gd) or a distance biplot in Figure \@ref(fig:dist-biplot-gd) can be used to explore the relationship between observations and variables. To achieve this, we need to project the observations perpendicularly onto the year variable line (the red line with an arrow), and the closer an observation is to the red arrow, the higher its value, indicating higher income inequality. Conversely, observations further away from the red arrow have smaller values, meaning lower income inequality.
+
+After projecting the observations onto the year variable line, about half of all states are positioned in the middle of the line in 1929, while the other half are projected to the opposite side of the arrow. This suggests that approximately half of the states have moderate income equality, while the remaining half have low income inequality. During the Great Depression period from 1929 to 1939, more and more states move away from the middle of the red arrow to the opposite side, indicating a decrease in income inequality during the Great Depression. Only New York and Florida appear to move closer to the red arrow, indicating that these two states had higher income equality during the Great Depression.
+
+During World War II, from 1940 to 1945, the majority of states are located on the opposite end of the red arrow, suggesting low income inequality during the war. Only a few states exhibit higher income inequality during the war, including Florida, Mississippi, Georgia, and Arkansas. Interestingly, Delaware is the only state that consistently exhibits a very high level of income inequality throughout the periods of the Great Depression and World War II.
+
+
+
+```{r corr-biplot-gr, fig.cap = "Correlation biplot for the Global Financial Crisis.", out.width= "70%"}
+biplot(pca_gr, scale = 0, cex = 0.8)
+```
+
+```{r dist-biplot-gr, fig.cap = "Distance biplot for the Global Financial Crisis.", out.width= "70%"}
+biplot(pca_gr, cex = 0.8)
+```
+
+Figure \@ref(fig:corr-biplot-gr) and Figure \@ref(fig:dist-biplot-gr) represent the correlation biplot and distance biplot, respectively, for the `Inequality_GR` Gini index data set, covering the period between 2007 and 2015. This period corresponds to the Global Financial Crisis and the economic downturn that followed. 
+
+In Figure \@ref(fig:corr-biplot-gr), we observe that all the yearly variables are more or less negatively associated with PC1, with the yearly variable shifting from a moderately negative association to a weak positive association with PC2. Our primary interest lies in understanding how income inequality in the states changes over time, so we begin by examining consecutive years.
+
+The yearly variable red lines shift clockwise from 2007 to 2015. The angles between these red lines offer insights into the correlations between two consecutive years. Specifically, the angles between 2007 and 2008, as well as between 2010 and 2015, are all very small. This indicates strong associations between these respective pairs of yearly variables, implying a high correlation in income inequality for those years. Conversely, there are two large angles observed between 2008 and 2010, indicating a weak association between these three years in terms of income inequality.
+
+Figure \@ref(fig:corr-biplot-gr) represents the distance biplot, where the distance between observations implies similarity between observations. The closer observations are, the more similar they are in terms of income inequality over the period, and vice versa. In this distance plot, all the states are spread out, indicating significant differences among them in terms of income inequality within their borders. Furthermore, several states are notably farther away from the majority. These states include New York, Florida, Mississippi, and West Virginia, impling substantial differences in income inequality compared to the majority of states.
+
+Either the correlation biplot in Figure \@ref(fig:corr-biplot-gr) or the distance biplot in Figure \@ref(fig:dist-biplot-gr) can be utilized to explore the relationship between observations and variables. To achieve this, we need to project the observations perpendicularly onto the year variable line (the red line with an arrow). The closer an observation is to the red arrow, the higher its value, indicating greater income inequality. Conversely, observations farther away from the red arrow have smaller values, representing lower income inequality.
+
+After projecting the observations onto the year variable line, the states are distributed along the red line for each year from 2007 to 2015. During the Global Financial Crisis and economic downturn period, some states consistently remain close to the red arrow, while others consistently stay distant from it. This implies that certain states consistently experience higher income inequality, while others maintain relatively lower income levels throughout the period of the Global Financial Crisis and economic downturn.
+
+Although the states with high income inequality fluctuate during this period, they often mirror the states with low income inequality. For instance, Mississippi exhibited high income inequality within the state in 2007 and 2008, but by 2015, it had transitioned to a relatively lower level of income inequality. Conversely, Nevada experienced relatively low income inequality in 2007 and 2008 but shifted to a higher level of income inequality in 2015. Interestingly, Florida appears to consistently maintain a very high level of income inequality throughout this entire period.
+
+
+### Conclusion
+
+In conclusion, historical events such as the Great Depression, World War II, and the Global Financial Crisis have all had significant impacts on income inequality in the United States. The impacts of the Great Depression and World War II on income inequality appear different from the impact of the Global Financial Crisis. During the Great Depression and World War II, the majority of states in the United States experienced a reduction in income inequality, resulting in relatively lower levels of income inequality. Only a very few states exhibited high levels of income inequality at the end of this period. In contrast, the Global Financial Crisis also influenced the level of income inequality in the states. This historical event often mirrored states with low levels of income inequality, shifting them to high levels of income inequality, and vice versa. Consequently, some states with low levels of income inequality experienced an increase in income inequality, while some states with high levels of income inequality have a relatively lower level of income inequality following this historical event.
+
+\newpage
+
+### Appendix: All code for this report
+
+```{r ref.label=knitr::all_labels(), echo=TRUE, eval=FALSE}
+```
