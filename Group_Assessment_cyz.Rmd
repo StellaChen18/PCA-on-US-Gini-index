@@ -1,0 +1,142 @@
+---
+title: "Group Assessment"
+author: "Yunzhi Chen"
+date: "2023-09-16"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+library(naniar)
+library(ggplot2)
+library(patchwork)
+```
+
+```{r}
+gd <- read.csv(here::here("Inequality_GD.csv")) %>% select(-X)
+gr <- read.csv(here::here("Inequality_GR.csv")) %>% select(-X)
+```
+
+# Cleaning
+```{r}
+colnames(gd) <- gsub("^X", "", colnames(gd)) 
+gd_long <- gd %>%
+  pivot_longer(cols = "1929":"1945",  
+               names_to = "Year",  
+               values_to = "Gini_index") 
+
+colnames(gr) <- gsub("^X", "", colnames(gr)) 
+gr_long <- gr %>%
+  pivot_longer(cols = "2007":"2015",  
+               names_to = "Year",  
+               values_to = "Gini_index") 
+```
+
+# Check NAs
+```{r}
+any_na(gd_long) # FALSE
+any_na(gr_long) # TRUE
+
+# Table
+gr_long %>%
+  #group_by(State) %>%
+  miss_var_summary()
+# Plots
+vis_miss(gr_long, cluster = TRUE)
+gg_miss_var(gr, facet = State)
+```
+
+# Check outliers
+```{r}
+gr_long %>%
+  ggplot(aes(x = Year, 
+             y = Gini_index,
+             color = State)) +
+ geom_point() 
+```
+
+# Repalce NA and outlier
+```{r}
+gd_remove_outlier <- gd_long %>% 
+  mutate(Gini_index = ifelse(Gini_index == 1000, NA, Gini_index))
+gd_cleaned <-  gd_remove_outlier %>%
+  mutate(Gini_index = impute_mean(Gini_index))
+
+gr_cleaned <-  gr_long %>%
+  mutate(Gini_index = impute_mean(Gini_index))
+```
+
+# PCA
+No need to standardize as the variables are measured in the same units.
+```{r}
+gd_cleaned_wide <-  gd_cleaned %>%
+  pivot_wider(names_from = Year,
+              values_from = Gini_index)
+
+gd_cleaned_wide %>%  
+  column_to_rownames('State') %>%
+  prcomp(scale.= FALSE) -> gd_pca
+summary(gd_pca) 
+```
+PC1 has the largest standard deviation, which means it captures the most variability in the data, and subsequent PCs capture progressively less variability.
+PC1 explains the largest proportion of variance (0.8392), which means it retains most of the information in the original data. 
+The cumulative proportion reaches 0.99417 after PC10, indicating that the first 10 PCs capture approximately 99.4% of the total variance.
+
+```{r}
+gr_cleaned_wide <-  gr_cleaned %>%
+  pivot_wider(names_from = Year,
+              values_from = Gini_index)
+
+gr_cleaned_wide %>%  
+  column_to_rownames('State') %>%
+  prcomp(scale.= FALSE) -> gr_pca
+summary(gr_pca)
+```
+PC1 has the highest standard deviation (0.09126), indicating that it captures the most variability in the data.
+Proportion of variance explained by the first PC alone is 78.21%, proportion of variance explained by the second PC alone is 18.75%.
+The cumulative proportion increases as you move through the PCs. This indicates that PC1 alone captures 78.21% of the total variance, PC1 and PC2 together capture 96.96%
+
+```{r}
+screeplot(gd_pca,type = 'lines') 
+screeplot(gr_pca,type = 'lines')
+
+```
+The elbow appears at the second PC, therefore 2 PCs should be used.
+
+```{r}
+biplot(gd_pca,scale=0)
+```
+It seems that 1942 and 1945 have a strong positive association with one another.
+
+There is no strong negative associations.
+
+1938 and 1929 are only weakly associated with another.
+```{r}
+biplot(gr_pca,scale=0) # variables clustered out of cluster/correlations/observations + event years(1929-1939/1940-1945)
+```
+2007 and 2008/2011, 2012 and 2015 have a strong positive association with one another.
+
+There is no strong negative associations.
+
+2008 and 2011 are only weakly associated with another.
+
+# Factor Model
+```{r}
+gd_cleaned_wide %>%  
+  column_to_rownames('State') %>%
+  factanal(factors = 10,rotation = 'none',scores = 'Bartlett')->gd_fa
+cor(gd_fa$scores)
+
+
+gr_cleaned_wide %>%  
+  column_to_rownames('State') %>%
+  factanal(factors = 5,rotation = 'none',scores = 'Bartlett')->gr_fa
+cor(gr_fa$scores)
+```
+
